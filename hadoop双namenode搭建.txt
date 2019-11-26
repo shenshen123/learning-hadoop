@@ -1,0 +1,659 @@
+
+
+############################################################################
+配置双namenode的目的就是为了防错，防止一个namenode挂掉数据丢失,Hadoop HA的搭建是基于Zookeeper的
+需要修改的配置文件在$HADOOP_HOME/etc/hadoop目录下:core-site.xml,hdfs-site.xml,mapred-site.xml,yarn-site.xml,workers,hadoop-env.sh,yarn-env.sh,capacity-scheduler.xml,log4j.properties
+双namenode搭建参考:https://blog.csdn.net/zyq11223/article/details/78506988
+############################################################################
+
+
+core-site.xml
+       <configuration>
+
+             <!-- 指定hdfs的nameservice为ns -->
+             <property>
+                  <name>fs.defaultFS</name>
+                  <value>hdfs://szwdy</value>
+             </property>
+             <!--指定hadoop数据临时存放目录-->
+             <property>
+                  <name>hadoop.tmp.dir</name>
+                  <value>/home/hbuser/hadoop/hdfs/tmp</value>
+             </property>
+             
+             <!--指定zookeeper地址-->
+             <property>
+                  <name>ha.zookeeper.quorum</name>
+                  <value>192.168.15.18:2181,192.168.15.45:2181,192.168.15.46:2181</value>
+             </property>
+          
+             <property>
+               <name>fs.oss.endpoint</name>
+               <value>oss-cn-shenzhen.aliyuncs.com</value>
+               <description>Aliyun OSS endpoint to connect to. </description>
+             </property>
+             <property>
+               <name>fs.oss.accessKeyId</name>
+               <value>LTAITMD9doK6QzgJ</value>
+               <description>Aliyun access key ID</description>
+             </property>
+          
+             <property>
+               <name>fs.oss.accessKeySecret</name>
+               <value>t0tKGjAhlGy2gFrZpWRN4vPbdm3EsD</value>
+               <description>Aliyun access key secret</description>
+             </property>
+             <property>
+               <name>fs.oss.impl</name>
+               <value>org.apache.hadoop.fs.aliyun.oss.AliyunOSSFileSystem</value>
+             </property>
+             <property>
+               <name>fs.oss.buffer.dir</name>
+               <value>/tmp/oss</value>
+             </property>
+             <property>
+               <name>fs.oss.connection.secure.enabled</name>
+               <value>false</value>
+             </property>
+             <property>
+               <name>fs.oss.connection.maximum</name>
+               <value>2048</value>
+             </property>
+       </configuration>
+	   
+	   
+hdfs-site.xml
+
+       <configuration>
+    <!--指定hdfs的nameservice为szwdy，需要和core-site.xml中的保持一致 -->
+             <property>
+                 <name>dfs.nameservices</name>
+                 <value>szwdy</value>
+             </property>
+             <!-- szwdy下面有两个NameNode，分别是nn1，nn2 -->
+             <property>
+                <name>dfs.ha.namenodes.szwdy</name>
+                <value>nn1,nn2</value>
+             </property>
+             <!-- nn1的RPC通信地址 -->
+             <property>
+                <name>dfs.namenode.rpc-address.szwdy.nn1</name>
+                <value>192.168.15.18:9000</value>
+             </property>
+             <!-- nn1的http通信地址 -->
+             <property>
+                 <name>dfs.namenode.http-address.szwdy.nn1</name>
+                 <value>192.168.15.18:50070</value>
+             </property>
+             <!-- nn2的RPC通信地址 -->
+             <property>
+                 <name>dfs.namenode.rpc-address.szwdy.nn2</name>
+                 <value>192.168.15.45:9000</value>
+             </property>
+             <!-- nn2的http通信地址 -->
+             <property>
+                 <name>dfs.namenode.http-address.szwdy.nn2</name>
+                 <value>192.168.15.45:50070</value>
+             </property>
+             <!-- 指定NameNode的元数据在JournalNode上的存放位置 -->
+             <property>
+                 <name>dfs.namenode.shared.edits.dir</name>
+                 <value>qjournal://192.168.15.18:8485;192.168.15.45:8485;192.168.15.46:8485/szwdy</value>
+             </property>
+             <!-- 指定JournalNode在本地磁盘存放数据的位置 -->
+             <property>
+                 <name>dfs.journalnode.edits.dir</name>
+                 <value>/home/hbuser/hadoop/journal</value>
+             </property>
+             <!-- 开启NameNode故障时自动切换 -->
+             <property>
+                 <name>dfs.ha.automatic-failover.enabled</name>
+                 <value>true</value>
+             </property>
+             <!-- 配置失败自动切换实现方式 -->
+             <property>
+                 <name>dfs.client.failover.proxy.provider.szwdy</name>
+                 <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+             </property>
+             <!-- 配置隔离机制，如果ssh是默认22端口，value直接写sshfence即可 -->
+             <property>
+                 <name>dfs.ha.fencing.methods</name>
+                 <value>
+                      sshfence
+                      shell(true)
+                 </value>
+             </property>
+             <!-- 使用隔离机制时需要ssh免登陆 -->
+             <property>
+                 <name>dfs.ha.fencing.ssh.private-key-files</name>
+                 <value>/home/hbuser/.ssh/id_rsa</value>
+             </property>
+             
+             <property>
+                 <name>dfs.namenode.name.dir</name>
+                 <value>/home/hbuser/hadoop/hdfs/name</value>
+             </property>
+             
+             <property>
+                 <name>dfs.datanode.data.dir</name>
+                 <value>/home/hbuser/hadoop/hdfs/data</value>
+             </property>
+              <property>
+                 <name>dfs.permissions</name>
+                 <value>false</value>
+             </property>
+             
+             <property>
+                 <name>fs.trash.interval</name>
+                 <value>4320</value>
+             <description>该值为设置放入回收站后保存的时长，分钟数</description> 
+             </property>
+             
+             <property>          
+                 <name>dfs.ha.log-roll.period</name>
+                 <value>120</value>
+                 <description>EditLog 日志滚动频率，单位为秒，默认是两分钟</description>
+             </property>
+             <property>
+                <name>dfs.replication</name>
+                <value>2</value>
+             </property>
+             <!-- 在NN和DN上开启WebHDFS (REST API)功能,不是必须 -->
+             <property>
+                <name>dfs.webhdfs.enabled</name>
+                <value>true</value>
+             </property>
+
+       </configuration>
+
+
+
+mapred-site.xml
+
+       <configuration>
+            <property>
+                <!-- 表示提交到hadoop中的任务采用yarn来运行，要是已经有该配置则无需重复配置 -->
+                 <name>mapreduce.framework.name</name>
+                 <value>yarn</value>
+             </property>
+             <property>
+               <!--日志监控服务的地址，一般填写为namenode机器地址 -->
+                 <name>mapreduce.jobhistroy.address</name>
+                 <value>192.168.15.18:10020</value>
+             </property>
+             <property>
+                 <name>mapreduce.jobhistroy.webapp.address</name>
+                 <value>192.168.15.18:19888</value>
+             </property>
+             <property>
+                 <name>mapred.job.reuse.jvm.num.tasks</name>
+                 <value>30</value>
+             </property>
+             
+             <property>
+             　  <name>mapreduce.map.memory.mb</name>
+             　  <value>1536</value>
+             </property>
+             <property>
+             　　<name>mapreduce.map.java.opts</name>
+             　  <value>-Xmx1024M</value>
+             </property>
+             <property>
+             　  <name>mapreduce.reduce.memory.mb</name>
+             　  <value>3072</value>
+             </property>
+             <property>
+             　  <name>mapreduce.reduce.java.opts</name>
+             　　<value>-Xmx2560M</value>
+             </property>
+             
+             <property>
+                 <name>yarn.app.mapreduce.am.env</name>
+                 <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+             </property>
+             <property>
+                <name>mapreduce.map.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+             </property>
+             <property>
+                <name>mapreduce.reduce.env</name>
+                <value>HADOOP_MAPRED_HOME=${HADOOP_HOME}</value>
+             </property>
+             
+       </configuration>
+	   
+	   
+yarn-site.xml
+
+       <configuration>
+             <!-- Site specific YARN configuration properties -->
+             <!-- reducer获取数据的方式 -->
+             <property>
+                <name>yarn.nodemanager.aux-services</name>
+                <value>mapreduce_shuffle</value>
+             </property>
+             
+             <property>
+                <name>yarn.nodemanager.aux-services.mapreduce_shuffle.class</name>
+                <value>org.apache.hadoop.mapred.ShuffleHandler</value>
+             </property>
+
+             <!-- 指定YARN的ResourceManager的地址 -->
+            <property>
+               <name>yarn.resourcemanager.hostname</name>
+               <value>192.168.15.18</value>
+            </property>
+
+            <!--开启日志监控-->
+            <property>
+               <name>yarn.log-aggregation-enable</name>
+               <value>true</value>
+            </property>
+            <!-- log server 的地址-->
+            <property>
+               <name>yarn.log.server.url</name>
+               <value>http://192.168.15.18:19888/jobhistory/logs</value>
+            </property>
+            
+             <!-- 配置日志过期时间,单位秒-->
+            <property>
+               <name>yarn.log-aggregation.retain-seconds</name>
+               <value>604800</value>
+            </property>
+            
+            <property>
+               <name>yarn.nodemanager.remote-app-log-dir</name>
+               <value>hdfs://szwdy/bigdata/logs</value>
+                <description>HDFS directory where the application logs are moved on application completion. Need to set appropriate permissions. Only applicable if log-aggregation is 
+                   enabled. The default value is "/logs" or "/tmp/logs" </description>
+            </property>
+            <property>
+               <name>yarn.nodemanager.pmem-check-enabled</name>
+               <value>false</value>
+            </property>
+            
+            <property>
+                <name>yarn.nodemanager.vmem-check-enabled</name>
+                <value>false</value>
+            </property>
+                       
+            <property>
+                <name>yarn.resourcemanager.scheduler.class</name>
+                <value>org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler</value>
+            </property>
+       </configuration>
+	   
+	   
+hadoop-env.sh
+在文本后添加如下内容:
+        export HADOOP_PID_DIR=${HADOOP_HOME}/pids
+        export JAVA_HOME=/home/hbuser/bigdata/jdk1.8.0
+        export HADOOP_SSH_OPTS="-p 22"
+        export SCALA_HOME=/home/hbuser/scala
+        export HADOOP_OPTIONAL_TOOLS="hadoop-aliyun"
+        export HADOOP_CLASSPATH=$HADOOP_CLASSPATH:/home/hbuser/kafka/libs/*
+        export HADOOP_CLASSPATH=$HADOOP_CLASSPATH:/home/hbuser/bigdata/devjar/*
+		
+		
+
+yarn-env.sh
+在文本后添加如下内容:
+        export JAVA_HOME=/home/hbuser/bigdata/jdk1.8.0
+        export SCALA_HOME=/home/hbuser/scala
+		
+		
+capacity-scheduler.xml
+
+<configuration>
+
+            <property>
+                <name>yarn.scheduler.capacity.maximum-applications</name>
+                <value>10000</value>
+                <description>最多可同时处于等待和运行状态的应用程序数目</description>
+            </property>
+ 
+            <property>
+                <name>yarn.scheduler.capacity.maximum-am-resource-percent</name>
+                <value>0.1</value>
+                <description>集群中可用于运行application master的资源比例上限,这通常用于限制并发运行的应用程序数目.</description>
+            </property>
+            
+            <property>
+                <name>yarn.scheduler.capacity.resource-calculator</name>
+                <value>org.apache.hadoop.yarn.util.resource.DominantResourceCalculator</value>
+                <description>ResourceCalculator用于比较调度程序资源的,默认的即是DefaultResourceCalculator,默认只关注内存和CPU资源</description>              
+            </property>
+            
+            <property>
+                <name>yarn.scheduler.capacity.root.queues</name>
+                <value>default,queueA,queueB</value>
+                <description>
+                  The queues at the this level (root is the root queue).具3个子队列
+                </description>
+            </property>
+                       
+             <!-- default --> 
+            <property>
+                 <name>yarn.scheduler.capacity.root.default.capacity</name>
+                 <value>30</value>
+                 <description>default队列的资源容量</description>
+            </property>
+            
+            <property>
+                 <name>yarn.scheduler.capacity.root.default.user-limit-factor</name>
+                 <value>1</value>
+                 <description>每个用户可使用的资源限制</description>
+            </property>
+            
+            <property>
+                 <name>yarn.scheduler.capacity.root.default.maximum-capacity</name>
+                 <value>85</value>
+                 <description>Default队列可使用的资源上限.</description>
+            </property>
+            
+            <property>
+                 <name>yarn.scheduler.capacity.root.default.state</name>
+                 <value>RUNNING</value>
+                 <description>Default队列的状态,可以是RUNNING或者STOPPED.</description>
+            </property>
+           
+            <property>
+                 <name>yarn.scheduler.capacity.root.default.acl_submit_applications</name>
+                 <value>*</value>
+                 <description>限制哪些用户可向default队列中提交应用程序."*"表示任意用户</description>
+            </property>
+           
+            <property>
+                 <name>yarn.scheduler.capacity.root.default.acl_administer_queue</name>
+                 <value>*</value>
+                 <description>限制哪些用户可管理default队列中的应用程序,“*”表示任意用户</description>
+            </property>
+           
+            <property>
+                 <name>yarn.scheduler.capacity.root.default.acl_application_max_priority</name>
+                 <value>*</value>
+                 <description>
+                   指定哪个用户可以提交具有配置任务优先级的应用
+                   For e.g, [user={name} group={name} max_priority={priority} default_priority={priority}]
+                 </description>
+            </property>
+          
+            <!-- queueA --> 
+            <property>
+                 <name>yarn.scheduler.capacity.root.queueA.capacity</name>
+                 <value>50</value>
+                 <description>default队列的资源容量</description>
+            </property>
+           
+            <property>
+                 <name>yarn.scheduler.capacity.root.queueA.user-limit-factor</name>
+                 <value>1</value>
+                 <description>每个用户可使用的资源限制</description>
+            </property>
+           
+            <property>
+                  <name>yarn.scheduler.capacity.root.queueA.maximum-capacity</name>
+                  <value>85</value>
+                  <description>Default队列可使用的资源上限.</description>
+            </property>
+           
+            <property>
+                  <name>yarn.scheduler.capacity.root.queueA.state</name>
+                  <value>RUNNING</value>
+                  <description>Default队列的状态,可以是RUNNING或者STOPPED.</description>
+            </property>
+           
+            <property>
+                  <name>yarn.scheduler.capacity.root.queueA.acl_submit_applications</name>
+                  <value>*</value>
+                  <description>限制哪些用户可向default队列中提交应用程序."*"表示任意用户</description>
+            </property>
+           
+            <property>
+                  <name>yarn.scheduler.capacity.root.queueA.acl_administer_queue</name>
+                  <value>*</value>
+                  <description>限制哪些用户可管理default队列中的应用程序,“*”表示任意用户</description>
+            </property>
+           
+            <property>
+                  <name>yarn.scheduler.capacity.root.queueA.acl_application_max_priority</name>
+                  <value>*</value>
+                  <description>
+                    指定哪个用户可以提交具有配置任务优先级的应用
+                    For e.g, [user={name} group={name} max_priority={priority} default_priority={priority}]
+                  </description>
+            </property>
+          
+            <!-- queueB --> 
+            <property>
+              <name>yarn.scheduler.capacity.root.queueB.capacity</name>
+              <value>20</value>
+              <description>queueB队列的资源容量</description>
+            </property>
+           
+            <property>
+              <name>yarn.scheduler.capacity.root.queueB.user-limit-factor</name>
+              <value>1</value>
+              <description>每个用户可使用的资源限制</description>
+            </property>
+           
+            <property>
+              <name>yarn.scheduler.capacity.root.queueB.maximum-capacity</name>
+              <value>85</value>
+              <description>Default队列可使用的资源上限.</description>
+            </property>
+           
+            <property>
+              <name>yarn.scheduler.capacity.root.queueB.state</name>
+              <value>RUNNING</value>
+              <description>Default队列的状态,可以是RUNNING或者STOPPED.</description>
+            </property>
+           
+            <property>
+              <name>yarn.scheduler.capacity.root.queueB.acl_submit_applications</name>
+              <value>*</value>
+              <description>限制哪些用户可向default队列中提交应用程序."*"表示任意用户</description>
+            </property>
+           
+            <property>
+              <name>yarn.scheduler.capacity.root.queueB.acl_administer_queue</name>
+              <value>*</value>
+              <description>限制哪些用户可管理default队列中的应用程序,“*”表示任意用户</description>
+            </property>
+           
+            <property>
+              <name>yarn.scheduler.capacity.root.queueB.acl_application_max_priority</name>
+              <value>*</value>
+              <description>
+                指定哪个用户可以提交具有配置任务优先级的应用
+                For e.g, [user={name} group={name} max_priority={priority} default_priority={priority}]
+              </description>
+            </property>
+            
+           <!-- common -->
+              <property>
+              <name>yarn.scheduler.capacity.node-locality-delay</name>
+              <value>-1</value>
+              <description>
+              调度器尝试调度一个rack-local container之前,
+              最多跳过的调度机会,通常而言,该值被设置成集群中机架数目,默认情况下为-1,表示不启用该功能.
+              </description>
+            </property>
+            
+            <property>
+              <name>yarn.scheduler.capacity.rack-locality-additional-delay</name>
+              <value>-1</value>
+              <description>
+              在节点本地延迟时间之外的另外的错过的调度机会的次数,在此之后,CapacityScheduler尝试调度非切换容器而不是机架本地容器.
+                  例如：在node-locality-delay = 40和rack-locality-delay = 20的情况下,
+              调度器将在40次错过机会之后尝试机架本地分配,在40 + 20 = 60之后错过机会.
+                  设置此参数时,应考虑到群集的大小.
+                  我们使用-1作为默认值,禁用此功能. 在这种情况下,根据资源请求中指定的容器和唯一位置的数量以及集群的大小,
+              计算分配关闭交换容器的错失机会的数量.
+              </description>
+            </property>
+          
+            <property>
+              <name>yarn.scheduler.capacity.queue-mappings</name>
+              <value></value>
+              <description>
+                    将用于将作业分配给队列的映射列表.
+                    这个列表的映射语法: [u|g]:[name]:[queue_name][,next mapping]*
+                    通常这个列表将被用来映射用户到队列.
+                    例如, u:%user:%user 映射所有用户以与用户相同的名字排队.
+              </description>
+            </property>
+          
+            <property>
+              <name>yarn.scheduler.capacity.queue-mappings-override.enable</name>
+              <value>false</value>
+              <description>
+              如果存在队列映射，它是否会覆盖用户指定的值？ 管理员可以使用此项将作业放入与用户指定的队列不同的队列中.
+                  默认值是false.
+              </description>
+            </property>
+          
+            <property>
+              <name>yarn.scheduler.capacity.per-node-heartbeat.maximum-offswitch-assignments</name>
+              <value>1</value>
+              <description>
+              控制节点心跳期间允许的OFF_SWITCH分配的数量.
+              增加此值可以提高OFF_SWITCH容器的调度速率. 较低的值可减少特定节点上应用程序的“聚集”. 默认值是1.
+                     合法值是1-MAX_INT. 这个配置是可刷新的.
+              </description>
+            </property>
+
+     </configuration>
+		
+		
+##############################################################################################################################################################################################################
+hadoop启动:注意首次初始化启动命令和之后启动的命令是不同的，首次启动比较复杂，步骤不对的话就会报错，不过之后就好了
+首次启动命令
+1、首先启动各个节点的Zookeeper，在各个节点上执行以下命令：
+bin/zkServer.sh start
+2、在某一个namenode节点执行如下命令，创建命名空间
+hdfs zkfc -formatZK
+3、在每个journalnode节点用如下命令启动journalnode
+sbin/hadoop-daemon.sh start journalnode
+4、在主namenode节点用格式化namenode和journalnode目录(注意ns是自己的hdfs名字,如:szwdy)
+hdfs namenode -format ns
+5、在主namenode节点启动namenode进程
+sbin/hadoop-daemon.sh start namenode
+6、在备namenode节点执行第一行命令，这个是把备namenode节点的目录格式化并把元数据从主namenode节点copy过来，并且这个命令不会把journalnode目录再格式化了！然后用第二个命令启动备namenode进程！
+hdfs namenode -bootstrapStandby
+sbin/hadoop-daemon.sh start namenode
+7、在两个namenode节点都执行以下命令
+sbin/hadoop-daemon.sh start zkfc
+8、在所有datanode节点都执行以下命令启动datanode
+sbin/hadoop-daemon.sh start datanode
+
+日常启停命令:
+sbin/start-dfs.sh
+sbin/stop-dfs.sh
+
+测试验证:
+首先在浏览器分别打开两个节点的namenode状态，其中一个显示active，另一个显示standby
+注意:Hadoop配置了HA，Spark也需要更改一些配置，否则会报java.net.UnknownHostException的错误，就是在$SPARK_HOME/conf/spark-defaults.conf内添加如下内容：
+spark.files /home/hbuser/hadoop/etc/hadoop/hdfs-site.xml,/home/hbuser/hadoop/etc/hadoop/core-site.xml
+##############################################################################################################################################################################################################
+		
+##################################################################################################
+spark搭建:主要修改spark-env.sh,spark-defaults.conf
+spark日志:https://www.cnblogs.com/luogankun/p/3981645.html
+spark集群运行找不到jar:https://www.cnblogs.com/dinghong-jo/p/7873646.html   把jar放到/home/hbuser/hadoop/share/hadoop/common/lib/  (Hadoop集群中所有机器均要求copy)
+
+##################################################################################################
+
+spark-env.sh
+       export SPARK_HISTORY_OPTS="-Dspark.history.ui.port=7777 -Dspark.history.retainedApplications=5 -Dspark.history.fs.logDirectory=hdfs://szwdy/bigdata/sparklog"
+       
+       export HADOOP_OPTIONAL_TOOLS="hadoop-aliyun"
+       export SPARK_OPTIONAL_TOOLS="hadoop-aliyun"
+       
+       export JAVA_HOME=/home/hbuser/bigdata/jdk1.8.0
+       export SCALA_HOME=/home/hbuser/scala
+       export HADOOP_HOME=/home/hbuser/hadoop
+       export HADOOP_CONF_DIR=/home/hbuser/hadoop/etc/hadoop
+	   
+	   
+spark-defaults.conf
+       #hadoop的HA
+       spark.files /home/hbuser/hadoop/etc/hadoop/hdfs-site.xml,/home/hbuser/hadoop/etc/hadoop/core-site.xml
+       
+       #事件日志
+       spark.eventLog.enabled=true 
+       spark.eventLog.compress=true
+       spark.eventLog.dir=hdfs://szwdy/bigdata/sparklog
+       
+       #日志清理  
+       spark.history.fs.cleaner.enabled true  
+       spark.history.fs.cleaner.interval 1d
+       spark.history.fs.cleaner.maxAge 7d
+	   
+	   
+##################################################################################################
+zookeeper搭建:主要修改/home/hbuser/zookeeper/conf中的配置文件:zoo.cfg,在zookeeper中新建data和datalog文件夹
+##################################################################################################
+
+       #发送心跳的间隔时间，单位：毫秒
+       tickTime=2000
+       #zookeeper保存数据的目录
+       dataDir=/home/hbuser/zookeeper/data
+       #日志目录
+       dataLogDir=/home/hbuser/zookeeper/datalog
+       #端口
+       clientPort=2181
+       #leader和follower初始化连接时最长能忍受多少个心跳时间的间隔数
+       initLimit=5
+       #leader和follower之间发送消息，请求和英达时间长度，最长不能超过多少个tickTime的时间长度
+       syncLimit=2
+       #zookeeper机器列表，server.order这里的Order依据集群的机器个数依次进行递增，这里的server1、server2、server3表示机器IP地址
+       server.46=192.168.15.46:2888:3888
+       server.45=192.168.15.45:2888:3888
+       server.18=192.168.15.18:2888:3888
+	   
+	   
+##################################################################################################
+hadoop和spark日志配置与启动:
+spark日志需要在hdfs上先建一个目录存放日志:hdfs://szwdy/bigdata/sparklog" 后方可启动spark日志监控
+hadoop日志启动命令:
+cd /home/hbuser/hadoop/sbin
+./mr-jobhistory-daemon.sh start historyserver
+spark日志启动命令:
+cd /home/hbuser/spark/sbin
+./start-history-server.sh
+##################################################################################################
+
+
+
+
+
+		
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	   
+	   
+	   
+	   
